@@ -1,0 +1,479 @@
+fullnameOverride: external-secrets-stack
+nameOverride: external-secrets-stack
+namespaceOverride: null
+
+global:
+  replicas: 1
+  # -- Definitions to set up nginx resolver
+  dnsService: kube-dns
+  clusterDomain: cluster.local
+  priorityClassName: system-cluster-critical
+
+tags:
+  logging: true
+  monitoring: true
+  distributed: true
+
+features:
+  nodeEncryption: false
+  bgp: false
+
+IPPools:
+  - name: system-pool
+    cidrs:
+      - 192.168.1.98/32
+      - 192.168.1.99/32
+    matchLabels:
+      io.kubernetes.service.namespace: kube-system
+
+logLevel: info
+
+# Cilium
+cilium:
+  k8sServiceHost: 192.168.1.198
+  k8sServicePort: 6443
+  nameOverride: cilium
+  fullnameOverride: cilium
+  enabled: true
+  priorityClassName: system-node-critical
+  kubeProxyReplacement: strict
+  tunnel: vxlan
+  bgpControlPlane:
+    enabled: true
+  envoy:
+    enabled: true
+    prometheus:
+      enabled: true
+      serviceMonitor:
+        enabled: false
+  prometheus:
+    enabled: true
+  dashboards:
+    enabled: true
+  clustermesh:
+    config:
+      enabled: false
+  nodeinit:
+    enabled: true
+    automount: true
+  ingressController:
+    enabled: true
+    default: true
+    loadbalancerMode: shared
+    service:
+      type: LoadBalancer
+      loadBalancerIP: 192.168.1.99
+      loadBalancerClass: cilium
+      #insecureNodePort: 80
+      #secureNodePort : 443
+      annotations:
+        io.cilium/lb-ipam-ips: "72.216.61.243,192.168.1.99,1192.168.1.98"
+  cluster:
+    name: kubernetes
+    id: 0
+  encryption:
+    nodeEncryption: false
+  operator:
+    replicas: 1
+    prometheus:
+      enabled: true
+  bgp:
+    enabled: false
+    announce:
+      loadbalancerIP: true
+      podCIDR: true
+  bpf:
+    masquerade: true
+    lbExternalClusterIP: true
+  externalIPs:
+    enabled: true
+  nodePort:
+    enabled: true
+  hostServices:
+    enabled: true
+  hostPort:
+    enabled: true
+  hubble:
+    enabled: true
+    metrics:
+      enabled: false
+    ui:
+      enabled: true
+    relay:
+      enabled: true
+      replicas: 1
+  ipam:
+    mode: kubernetes
+  loadBalancer:
+    l7:
+      backend: envoy
+  isDefault: false
+  url: 'http://{{ include "prometheus.fullname" .}}:{{ .Values.prometheus.server.service.servicePort }}{{ .Values.prometheus.server.prefixURL }}'
+  datasource:
+    jsonData: "{}"
+
+# MetalLB
+metallb:
+  enabled: true
+  crds:
+    enabled: false
+  nameOverride: metallb
+  fullnameOverride: metallb
+
+# Cert Manager
+cert-manager:
+  fullnameOverride: cert-manager
+  nameOverride: cert-manager
+  installCRDs: false
+  prometheus:
+    serviceMonitor:
+      enabled: false
+  webhook:
+    serviceType: ClusterIP
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+
+# Metrics Server
+metrics-server:
+  enabled: true
+  nameOverride: metrics-server
+  fullnameOverride: metrics-server
+
+  args:
+    - --kubelet-insecure-tls
+
+  #service:
+  #  port: 8080
+
+  apiService:
+    create: true
+    insecureSkipTLSVerify: true
+
+  hostNetwork:
+    enabled: false
+
+  metrics:
+    enabled: true
+
+  serviceMonitor:
+    enabled: false
+
+# Local Path Provisioner
+local-path-provisioner:
+  enabled: true
+  isDefault: false
+  fullnameOverride: local-provisioner
+  nameOverride: local-provisioner
+  nodePathMap:
+    - node: DEFAULT_PATH_FOR_NON_LISTED_NODES
+      paths:
+        - /data/local-path-provisioner
+  storageClass:
+    create: true
+    name: local-path
+    defaultClass: true
+    reclaimPolicy: Delete
+
+# Prometheus
+prometheus:
+  enabled: true
+
+kube-prometheus-stack:
+  nameOverride: prometheus
+  fullnameOverride: prometheus
+  namespaceOverride: monitoring
+  # Values.prometheusOperator.admissionWebhooks.annotations
+  prometheusOperator:
+    networkPolicy:
+      enabled: false
+      flavor: cilium
+    admissionWebhooks:
+      enabled: false
+      certManager:
+        enabled: true
+
+  extraManifests:
+  - apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: monitoring
+      labels:
+        app: kube-prometheus-stack
+        app.kubernetes.io/instance: cilium
+
+  thanosRuler:
+    enabled: true
+
+  prometheus:
+    prometheusSpec:
+      enableFeatures:
+        - exemplar-storage
+
+  alertmanager:
+    enabled: false
+
+  grafana:
+    enabled: false
+    namespaceOverride: monitoring
+    fullnameOverride: grafana
+    nameOverride: grafana
+
+    serviceMonitor:
+      enabled: false
+
+    grafana.ini:
+      auth:
+        disable_login_form: true
+      auth.anonymous:
+        enabled: true
+        org_name: Appkins Org.
+        org_role: Admin
+      server:
+        root_url: "%(protocol)s://%(domain)s:%(http_port)s/grafana"
+        serve_from_sub_path: true
+    adminPassword: admin
+    datasources:
+      datasources.yaml:
+        apiVersion: 1
+        datasources:
+          - name: Prometheus
+            type: prometheus
+            url: 'http://prometheus-server.kube-system.svc.cluster.local:9090'
+            editable: true
+            isDefault: true
+
+          - name: Tempo
+            uid: traces
+            type: tempo
+            url: 'http://tempo.kube-system.svc.cluster.local:3200'
+            access: proxy
+            basicAuth: false
+    dashboardProviders:
+      dashboardproviders.yaml:
+        apiVersion: 1
+        providers:
+          - name: 'default'
+            orgId: 1
+            folder: ''
+            type: file
+            disableDeletion: false
+            editable: true
+            options:
+              path: /var/lib/grafana/dashboards/default
+    dashboardsConfigMaps:
+      default: grafana-dashboards
+    resources:
+      limits:
+        memory: 100Mi
+
+  nodeExporter:
+    enabled: false
+  prometheus-node-exporter:
+    namespaceOverride: kube-system
+# Fluent Bit
+fluent-bit:
+  enabled: true
+  fullnameOverride: fluent-bit
+  nameOverride: fluent-bit
+
+  serviceMonitor:
+    enabled: false
+
+  config:
+    service: |
+      [SERVICE]
+        Daemon Off
+        Flush {{ .Values.flush }}
+        Log_Level {{ .Values.logLevel }}
+        Parsers_File parsers.conf
+        Parsers_File custom_parsers.conf
+        HTTP_Server On
+        HTTP_Listen 0.0.0.0
+        HTTP_Port {{ .Values.metricsPort }}
+        Health_Check On
+
+    filters: |
+      [FILTER]
+        Name kubernetes
+        Match kube.*
+        Merge_Log On
+        Keep_Log Off
+        K8S-Logging.Parser On
+        K8S-Logging.Exclude On
+
+    ## https://docs.fluentbit.io/manual/pipeline/inputs
+    inputs: |
+      [INPUT]
+        Name              tail
+        Path              /var/log/containers/*.log
+        multiline.parser  docker, cri
+        Tag               kube.*
+        Mem_Buf_Limit     5MB
+        Skip_Long_Lines   On
+
+      [INPUT]
+        Name           systemd
+        Tag            host.*
+        Systemd_Filter _SYSTEMD_UNIT=kubelet.service
+        Read_From_Tail On
+
+      [INPUT]
+        name            node_exporter_metrics
+        tag             node_metrics
+        scrape_interval 2
+
+      [INPUT]
+        Name                 event_type
+        Type                 traces
+
+    outputs: |
+      [OUTPUT]
+        Name            prometheus_exporter
+        Match           node_metrics
+        Host            prometheus-prometheus.{{ include "external-secrets-stack.domain" .}}
+        port            9090
+        add_label       app fluent-bit
+
+      [OUTPUT]
+        name                   loki
+        match                  *
+        Host                   loki.{{ include "external-secrets-stack.domain" .}}
+        labels                 job=fluentbit
+        auto_kubernetes_labels on
+
+      [OUTPUT]
+        Name                 opentelemetry
+        Match                *
+        Host                 tempo.{{ include "external-secrets-stack.domain" .}}
+        Port                 3100
+        Metrics_uri          /api/v1/push
+        Logs_uri             /api/v1/push
+        Traces_uri           /api/v1/push
+        Log_response_payload True
+        Tls                  Off
+        Tls.verify           Off
+        # add user-defined labels
+        add_label            app fluent-bit
+        add_label            color blue
+  dashboards:
+    enabled: true
+# Minio
+minio:
+  enabled: true
+  fullnameOverride: minio
+  nameOverride: minio
+  replicas: '{{ .Values.global.replicas }}'
+  mode: standalone
+  rootUser: minio
+  rootPassword: minio123
+  logLevel: info
+  serverPort: 3100
+  buckets:
+    - name: loki
+      policy: none
+      purge: false
+    - name: tempo
+      policy: none
+      purge: false
+    - name: mimir
+      policy: none
+      purge: false
+# Loki
+loki:
+  enabled: true
+  isDefault: true
+  fullnameOverride: loki
+  nameOverride: loki
+  monitoring:
+    dashboards:
+      enabled: true
+    serviceMonitor:
+      enabled: false
+  singleBinary:
+    replicas: 1
+  loki:
+    storage:
+      type: '{{ include "external-secrets-stack.storage" .}}'
+      bucketNames:
+        chunks: loki
+        ruler: loki
+        admin: loki
+      s3:
+        endpoint: '{{ include "minio.endpoint" .}}'
+        secretAccessKey: '{{ include "external-secrets-stack.minio.password" .}}'
+        accessKeyId: '{{ include "external-secrets-stack.minio.user" .}}'
+        insecure: true
+    schema_config:
+      configs:
+        - from: 2023-01-01
+          store: tsdb
+          object_store: '{{ include "external-secrets-stack.storage" .}}'
+          schema: v12
+          index:
+            prefix: index_
+            period: 24h
+  readinessProbe:
+    httpGet:
+      path: /ready
+      port: http-metrics
+    initialDelaySeconds: 45
+  livenessProbe:
+    httpGet:
+      path: /ready
+      port: http-metrics
+    initialDelaySeconds: 45
+  datasource:
+    jsonData: "{}"
+    uid: ""
+# Mimir
+mimir:
+  enabled: false
+  fullnameOverride: mimir
+  nameOverride: mimir
+  nginx:
+    enabled: false
+  alertmanager:
+    enabled: false
+  minio:
+    enabled: false
+  mimir:
+    structuredConfig:
+      usage_stats:
+        installation_mode: helm
+
+      activity_tracker:
+        filepath: /active-query-tracker/activity.log
+
+      blocks_storage:
+        backend: s3
+        s3:
+          access_key_id: '{{ include "external-secrets-stack.minio.user" .}}'
+          bucket_name: mimir
+          endpoint: '{{ include "minio.endpoint" .}}'
+          insecure: true
+          secret_access_key: '{{ include "external-secrets-stack.minio.password" .}}'
+        tsdb:
+          dir: /data/tsdb
+          head_compaction_interval: 15m
+          wal_replay_concurrency: 3
+# Tempo
+tempo:
+  enabled: true
+  fullnameOverride: tempo
+  nameOverride: tempo
+
+  serviceMonitor:
+    enabled: false
+
+  storage:
+    trace:
+      bucket: tempo
+      backend: '{{ include "external-secrets-stack.storage" .}}'
+      s3:
+        access_key: '{{ include "external-secrets-stack.minio.user" .}}'
+        secret_key: '{{ include "external-secrets-stack.minio.password" .}}'
+        bucket: 'tempo'
+        endpoint: '{{ include "minio.endpoint" .}}'
+        insecure: true

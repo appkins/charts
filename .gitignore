@@ -1,0 +1,13 @@
+# Junk
+.DS_Store
+**/*.log
+
+# Chart dependencies
+/charts/**/charts/
+
+# Test files
+**/*test-values.y*ml
+kubeconfig
+charts/.*
+
+data/*.yaml

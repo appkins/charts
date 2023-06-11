@@ -1,0 +1,21 @@
+{{- $labels := include "argocd-stack.labels" . -}}
+{{- if false }}
+apiVersion: "cilium.io/v2alpha1"
+kind: CiliumBGPPeeringPolicy
+metadata:
+  name: 01-bgp-peering-policy
+  labels:
+    {{- $labels | nindent 4 }}
+  annotations:
+    helm.sh/hook": post-install,post-upgrade
+spec:
+  nodeSelector:
+    matchLabels:
+      kubernetes.io/hostname: kubernetes-system-00
+  virtualRouters: # []CiliumBGPVirtualRouter
+  - localASN: 65000
+    exportPodCIDR: true
+    neighbors: # []CiliumBGPNeighbor
+    - peerAddress: '192.168.1.1'
+      peerASN: 65001
+{{- end}}

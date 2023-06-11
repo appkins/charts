@@ -1,0 +1,14 @@
+{{- range $path, $bytes := .Files.Glob "dashboards/*.json" }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    app: grafana
+    {{- include "cilium-stack.labels" . | nindent 4 }}
+  name: grafana-{{ $path | base | trimSuffix (ext $path) }}
+  namespace: monitoring
+data:
+  {{ $path | base }}: |
+{{ $bytes | toString | indent 4}}
+{{- end }}

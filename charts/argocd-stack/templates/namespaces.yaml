@@ -1,0 +1,10 @@
+{{- $labels := include "argocd-stack.labels" . -}}
+{{- range $ns := without (values .Values.tags) "distributed" }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ $ns | quote}}
+  labels:
+    {{- $labels | nindent 4 }}
+{{- end }}

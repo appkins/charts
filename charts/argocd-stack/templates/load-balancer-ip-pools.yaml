@@ -1,0 +1,16 @@
+{{- if .Values.IPPools }}
+{{- range $pool := .Values.IPPools }}
+---
+apiVersion: "metallb.io/v1beta1"
+kind: IPAddressPool
+metadata:
+  name: {{ $pool.name }}
+spec:
+{{- if $pool.cidrs }}
+  addresses:
+  {{- range $cidr := $pool.cidrs }}
+    - {{ $cidr }}
+  {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
